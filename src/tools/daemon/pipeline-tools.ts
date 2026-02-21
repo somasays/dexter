@@ -13,93 +13,117 @@ import {
   cancelPipeline,
   findExistingPipeline,
   updatePipelineStatus,
+  getScriptsDir,
+  getCollectedDataPath,
   type EventType,
   type PipelineCreate,
 } from '../../daemon/pipelines.js';
+import type { SchedulerEngine } from '../../daemon/scheduler.js';
+import { join } from 'node:path';
 
-export const createPipelineTool = new DynamicStructuredTool({
-  name: 'create_pipeline',
-  description: `Create a new data collection pipeline for an upcoming event.
+// ─────────────────────────────────────────────────────────────────────────────
+// Factory: createPipelineTool receives the scheduler so it can immediately
+// register the new cron job without waiting for a daemon restart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function makeCreatePipelineTool(scheduler?: SchedulerEngine): DynamicStructuredTool {
+  return new DynamicStructuredTool({
+    name: 'create_pipeline',
+    description: `Create a new data collection pipeline for an upcoming event.
 A pipeline defines: what data to collect, when to collect it (cron), and how to process it.
 The collection script must already exist and be tested before creating a pipeline.
-The pipeline will be automatically scheduled and run by the daemon.`,
+The pipeline will be immediately scheduled and will fire automatically.`,
 
-  schema: z.object({
-    ticker: z.string().describe('Ticker symbol (e.g. AAPL)'),
-    eventType: z
-      .enum(['earnings', 'ex_dividend', 'analyst_day', 'filing_10k', 'filing_10q', 'filing_8k', 'price_alert', 'custom'])
-      .describe('Type of event to monitor'),
-    description: z.string().describe('Human-readable description (e.g. "AAPL Q1 2026 Earnings")'),
-    eventDate: z.string().describe('Expected event date (ISO format, e.g. 2026-04-30)'),
-    scriptFilename: z.string().describe('Collection script filename (must already exist in ~/.dexter/scripts/)'),
-    scheduleCron: z
-      .string()
-      .describe('Cron expression for when to run collection (e.g. "0 21 30 4 *" for April 30 at 9pm)'),
-    notifyChannel: z.enum(['telegram', 'whatsapp']).default('telegram'),
-    alertThreshold: z
-      .string()
-      .optional()
-      .describe(
-        'Natural language condition for sending alert (e.g. "revenue miss >3% OR guidance cut"). If omitted, agent decides.'
-      ),
-    positionShares: z.number().optional(),
-    positionCostBasis: z.number().optional(),
-    thesisSnapshot: z.string().optional().describe('Current thesis for this ticker'),
-  }),
+    schema: z.object({
+      ticker: z.string().describe('Ticker symbol (e.g. AAPL)'),
+      eventType: z
+        .enum(['earnings', 'ex_dividend', 'analyst_day', 'filing_10k', 'filing_10q', 'filing_8k', 'price_alert', 'custom'])
+        .describe('Type of event to monitor'),
+      description: z.string().describe('Human-readable description (e.g. "AAPL Q1 2026 Earnings")'),
+      eventDate: z.string().describe('Expected event date (ISO format, e.g. 2026-04-30)'),
+      scriptFilename: z.string().describe('Collection script filename (must already exist in ~/.dexter/scripts/)'),
+      scheduleCron: z
+        .string()
+        .describe('Cron expression for when to run collection (e.g. "0 21 30 4 *" for April 30 at 9pm)'),
+      notifyChannel: z.enum(['telegram', 'whatsapp']).default('telegram'),
+      alertThreshold: z
+        .string()
+        .optional()
+        .describe(
+          'Natural language condition for sending alert (e.g. "revenue miss >3% OR guidance cut"). If omitted, agent decides.'
+        ),
+      positionShares: z.number().optional(),
+      positionCostBasis: z.number().optional(),
+      thesisSnapshot: z.string().optional().describe('Current thesis for this ticker'),
+    }),
 
-  func: async ({
-    ticker,
-    eventType,
-    description,
-    eventDate,
-    scriptFilename,
-    scheduleCron,
-    notifyChannel,
-    alertThreshold,
-    positionShares,
-    positionCostBasis,
-    thesisSnapshot,
-  }) => {
-    const { getScriptPath } = await import('../../daemon/pipelines.js');
-    const { join } = await import('node:path');
-    const { getScriptsDir } = await import('../../daemon/pipelines.js');
-
-    const scriptPath = join(getScriptsDir(), scriptFilename.replace(/[^a-zA-Z0-9._-]/g, '-'));
-
-    const def: PipelineCreate = {
-      ticker: ticker.toUpperCase(),
-      eventType: eventType as EventType,
+    func: async ({
+      ticker,
+      eventType,
       description,
       eventDate,
-      collection: {
-        scriptPath,
-        scheduleCron,
-      },
-      processing: {
-        notifyChannel,
-        alertThreshold,
-      },
-      context: {
-        position:
-          positionShares !== undefined && positionCostBasis !== undefined
-            ? { shares: positionShares, costBasis: positionCostBasis }
-            : undefined,
-        thesis: thesisSnapshot,
-      },
-    };
+      scriptFilename,
+      scheduleCron,
+      notifyChannel,
+      alertThreshold,
+      positionShares,
+      positionCostBasis,
+      thesisSnapshot,
+    }) => {
+      const safeName = scriptFilename.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const scriptPath = join(getScriptsDir(), safeName);
 
-    const pipeline = await createPipeline(def);
+      // Canonical output path written into the pipeline so collection scripts
+      // and the processing agent always agree on where data lives.
+      const outputDataPath = getCollectedDataPath(ticker.toUpperCase(), eventType, description);
 
-    return formatToolResult({
-      success: true,
-      pipelineId: pipeline.id,
-      description: pipeline.description,
-      scheduleCron: pipeline.collection.scheduleCron,
-      eventDate: pipeline.eventDate,
-      message: `Pipeline created: ${pipeline.id}. Will collect data on schedule: ${scheduleCron}`,
-    });
-  },
-});
+      const def: PipelineCreate = {
+        ticker: ticker.toUpperCase(),
+        eventType: eventType as EventType,
+        description,
+        eventDate,
+        collection: {
+          scriptPath,
+          scheduleCron,
+          outputDataPath,
+        },
+        processing: {
+          notifyChannel,
+          alertThreshold,
+        },
+        context: {
+          position:
+            positionShares !== undefined && positionCostBasis !== undefined
+              ? { shares: positionShares, costBasis: positionCostBasis }
+              : undefined,
+          thesis: thesisSnapshot,
+        },
+      };
+
+      const pipeline = await createPipeline(def);
+
+      // Immediately wire into the live scheduler so the cron fires during
+      // this daemon session without requiring a restart.
+      if (scheduler) {
+        scheduler.schedulePipeline(pipeline);
+      }
+
+      return formatToolResult({
+        success: true,
+        pipelineId: pipeline.id,
+        description: pipeline.description,
+        scheduleCron: pipeline.collection.scheduleCron,
+        outputDataPath,
+        eventDate: pipeline.eventDate,
+        message: `Pipeline created and scheduled: ${pipeline.id}. Cron: ${scheduleCron}. Data will be written to: ${outputDataPath}`,
+      });
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remaining tools (no scheduler dependency)
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const listPipelinesTool = new DynamicStructuredTool({
   name: 'list_pipelines',
@@ -127,6 +151,7 @@ Use this to check what's already being monitored before creating new pipelines.`
       status: p.status,
       scheduleCron: p.collection.scheduleCron,
       testedAt: p.collection.testedAt,
+      outputDataPath: p.collection.outputDataPath,
     }));
 
     return formatToolResult({ pipelines: summary, count: filtered.length });
@@ -136,11 +161,12 @@ Use this to check what's already being monitored before creating new pipelines.`
 export const checkPipelineExistsTool = new DynamicStructuredTool({
   name: 'check_pipeline_exists',
   description: `Check if a pipeline already exists for a ticker + event combination.
-Use this before creating a new pipeline to avoid duplicates.`,
+Use this before creating a new pipeline to avoid duplicates.
+Pass the exact description string you plan to use to check for exact matches.`,
   schema: z.object({
     ticker: z.string(),
     eventType: z.enum(['earnings', 'ex_dividend', 'analyst_day', 'filing_10k', 'filing_10q', 'filing_8k', 'price_alert', 'custom']),
-    description: z.string().optional(),
+    description: z.string().optional().describe('Exact description to match (recommended to prevent duplicates)'),
   }),
   func: async ({ ticker, eventType, description }) => {
     const existing = await findExistingPipeline(ticker.toUpperCase(), eventType as EventType, description);
@@ -148,7 +174,7 @@ Use this before creating a new pipeline to avoid duplicates.`,
       exists: existing !== null,
       pipeline: existing ?? undefined,
       message: existing
-        ? `Pipeline already exists: ${existing.id} (${existing.status})`
+        ? `Pipeline already exists: ${existing.id} (${existing.status}). Do not create a duplicate.`
         : 'No existing pipeline found. Safe to create.',
     });
   },

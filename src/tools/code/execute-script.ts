@@ -14,7 +14,7 @@
 
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { mkdir, writeFile, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { z } from 'zod';
 import { formatToolResult } from '../types.js';
@@ -240,15 +240,23 @@ Returns the file contents as a string.`,
   }),
 
   func: async ({ filePath }) => {
+    // Path validation: restrict reads to the collected data directory
+    const resolvedPath = resolve(isAbsolute(filePath) ? filePath : join(getCollectedDataDir(), filePath));
+    const collectedDir = resolve(getCollectedDataDir());
+    if (!resolvedPath.startsWith(collectedDir + '/') && resolvedPath !== collectedDir) {
+      return formatToolResult({
+        error: `Access denied: path must be within collected data directory (${collectedDir}). Got: ${resolvedPath}`,
+      });
+    }
     try {
-      const content = await readFile(filePath, 'utf-8');
+      const content = await readFile(resolvedPath, 'utf-8');
       // Truncate very large files
       const truncated = content.length > 50000
         ? content.slice(0, 50000) + '\n[content truncated to 50KB]'
         : content;
-      return formatToolResult({ content: truncated, path: filePath, bytes: content.length });
+      return formatToolResult({ content: truncated, path: resolvedPath, bytes: content.length });
     } catch (err) {
-      return formatToolResult({ error: `Cannot read ${filePath}: ${String(err)}` });
+      return formatToolResult({ error: `Cannot read ${resolvedPath}: ${String(err)}` });
     }
   },
 });

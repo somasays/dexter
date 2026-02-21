@@ -11,7 +11,7 @@ import type { StructuredToolInterface } from '@langchain/core/tools';
 import { getToolRegistry } from '../tools/registry.js';
 import { readProfileTool, updateProfileTool, addHoldingTool, removeHoldingTool, addGoalTool } from '../tools/daemon/profile-tools.js';
 import { readThesisTool, writeThesisTool, appendThesisEntryTool, logActionTool, readActionLogTool, saveMarketContextTool, readMarketContextTool, listMemoryTool } from '../tools/daemon/memory-tools.js';
-import { createPipelineTool, listPipelinesTool, checkPipelineExistsTool, cancelPipelineTool, markPipelineTestedTool } from '../tools/daemon/pipeline-tools.js';
+import { makeCreatePipelineTool, listPipelinesTool, checkPipelineExistsTool, cancelPipelineTool, markPipelineTestedTool } from '../tools/daemon/pipeline-tools.js';
 import { writeScriptTool, testScriptTool, runScriptTool, readCollectedDataTool } from '../tools/code/execute-script.js';
 import { sendAlertTool, sendReplyTool } from '../tools/daemon/alert-tools.js';
 import type { SchedulerEngine } from './scheduler.js';
@@ -25,7 +25,7 @@ export function getDaemonTools(config: DaemonToolsConfig): StructuredToolInterfa
   const { agentType } = config;
 
   // Base financial tools from the existing registry
-  const model = process.env.DEXTER_DAEMON_MODEL ?? 'gpt-5.2';
+  const model = process.env.DEXTER_DAEMON_MODEL ?? 'gpt-4o';
   const baseRegistry = getToolRegistry(model);
   const financialSearch = baseRegistry.find((t) => t.name === 'financial_search')?.tool;
   const financialMetrics = baseRegistry.find((t) => t.name === 'financial_metrics')?.tool;
@@ -60,8 +60,8 @@ export function getDaemonTools(config: DaemonToolsConfig): StructuredToolInterfa
       ...profileTools,
       ...memoryTools,
       saveMarketContextTool,
-      // Pipeline management
-      createPipelineTool,
+      // Pipeline management — factory wires new pipelines into live scheduler
+      makeCreatePipelineTool(config.scheduler),
       listPipelinesTool,
       checkPipelineExistsTool,
       cancelPipelineTool,
@@ -108,7 +108,7 @@ export function getDaemonTools(config: DaemonToolsConfig): StructuredToolInterfa
     // Reply to user
     sendReplyTool,
     // Pipeline management (user may ask to monitor something)
-    createPipelineTool,
+    makeCreatePipelineTool(config.scheduler),
     listPipelinesTool,
     cancelPipelineTool,
     // Code execution for ad-hoc calculations

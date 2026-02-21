@@ -36,6 +36,7 @@ export interface Pipeline {
   collection: {
     scriptPath: string; // ~/.dexter/scripts/{id}-collect.ts
     scheduleCron: string; // when to run the collection script
+    outputDataPath: string; // canonical dir where the script MUST write output
     testedAt?: string; // when the script was last tested successfully
     testResult?: 'success' | 'failure';
     lastRunAt?: string;
