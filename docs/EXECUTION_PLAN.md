@@ -56,19 +56,51 @@ The daemon will:
 - [ ] **Structured logging**
   - Replace `console.log` throughout daemon with levelled logger (`debug/info/warn/error`)
   - Persist logs to `~/.dexter/logs/daemon.log` with rotation
+  - Correlation IDs to tie a single pipeline run's logs together across interleaved events
 
 - [ ] **Health endpoint / status command**
   - `bun run daemon:status` should show: active pipelines, last management run, uptime
   - Optional: HTTP health endpoint on localhost for monitoring
+  - Dead man's switch: alert user via Telegram if the daemon process hasn't heartbeated in N hours
 
 - [ ] **Pipeline cleanup for accumulated state**
   - Management agent should cancel pipelines for events more than 30 days past
-  - Prevent unbounded growth of `~/.dexter/pipelines/`
+  - Collected data files older than 90 days can be deleted or archived
+  - Thesis history: enforce max 500 entries on disk (trim oldest), not just in context window
+  - Files in `~/.dexter/pipelines/` and `~/.dexter/scripts/` are never cleaned up today
 
 - [ ] **OS-level sandbox hardening**
-  - Current sandbox strips env vars (good) but doesn't restrict filesystem access
-  - Ideal: run scripts via `bun --allow-write=~/.dexter/collected` or similar flag
+  - Current env-stripping is correct but insufficient: scripts still have full filesystem access
+  - `HOME` in the sandbox env grants access to `~/.ssh`, `~/.aws`, and all credential stores
+  - Ideal: separate OS user, `bun --allow-write=~/.dexter/collected`, or seccomp filter
   - Track: https://bun.sh/docs/runtime/security
+
+- [ ] **Atomic file writes for all state**
+  - `profile.ts`, `memory.ts`, `pipelines.ts` all use read-modify-write without file locks
+  - Write to a temp file then `rename()` to make writes atomic and crash-safe
+  - Prevents silent data loss if two agents write the same file concurrently
+
+- [ ] **Pipeline crash recovery**
+  - Pipelines stuck in `running` state at startup should be reset to `scheduled` (with a restart counter) rather than left running or silently skipped
+  - Check for partial output files from a crashed collection run before queuing processing
+
+- [ ] **Failed pipeline user notification**
+  - When a collection script fails (non-zero exit), send a brief Telegram notice
+  - Currently fails silently — user never knows the earnings night collection broke
+
+- [ ] **Processing agent structured output**
+  - Enforce `{ decision: 'ALERT' | 'NO_ACTION', rationale: string, alert?: string }` via Zod on the agent's final message
+  - Prevents the agent from neither alerting nor logging (silent max-iteration failure)
+  - Use `withStructuredOutput` from LangChain or a final tool call gate
+
+- [ ] **Management agent duplicate pipeline guard**
+  - Normalize description strings before `check_pipeline_exists` (lowercase, strip punctuation)
+  - Or use ticker+eventType+eventDate as the dedup key instead of free-form description
+  - Idempotent startup: track `lastManagementRunDate` in daemon state; skip full run if already ran today
+
+- [ ] **WhatsApp delivery warning**
+  - Setup wizard should warn: "WhatsApp delivery is currently a stub — alerts will not be delivered"
+  - Or block WhatsApp selection in setup until the gateway is live
 
 ### P2 — Enhanced capabilities
 
@@ -91,6 +123,16 @@ The daemon will:
 - [ ] **Retrospective learning**
   - After each recommendation, track what actually happened
   - Monthly review: "Here's what I recommended vs what the market did"
+
+- [ ] **Profile staleness during long agent runs**
+  - System prompt receives profile at agent start; `read_profile` tool returns live disk state
+  - If management agent modifies the profile mid-run, its system prompt context goes stale
+  - Fix: remove profile from system prompt; always use `read_profile` tool for current data
+
+- [ ] **Financial advice disclaimer system**
+  - Reactive agent produces specific buy/sell recommendations with no regulatory disclaimer
+  - Add a configurable disclaimer footer to all outbound alerts and reactive replies
+  - Consider a capability flag to soften recommendations to "considerations" for non-professional users
 
 ---
 
