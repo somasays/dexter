@@ -78,10 +78,11 @@ export class WealthAgentDaemon {
       const authorizedChatId = this.cachedProfile?.delivery.chatId;
 
       this.telegramChannel.onInbound((msg) => {
-        // Fix 2: Authenticate sender — only process messages from the configured chat ID
-        if (authorizedChatId && msg.chatId !== authorizedChatId) {
+        // Security: reject messages from any sender that isn't the configured chatId.
+        // When authorizedChatId is undefined (no profile), ALL messages are rejected —
+        // the user must run daemon:setup before Telegram access is permitted.
+        if (!authorizedChatId || msg.chatId !== authorizedChatId) {
           console.warn(`[daemon] Rejected message from unauthorized sender: ${msg.chatId}`);
-          // Optionally: this.telegramChannel?.send({ chatId: msg.chatId, text: 'Unauthorized.' });
           return;
         }
         console.log(`[daemon] Inbound message from ${msg.from}: ${msg.text.slice(0, 50)}...`);
