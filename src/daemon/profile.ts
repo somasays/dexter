@@ -5,7 +5,7 @@
  * The agent reads this at every wake to personalise every interaction.
  */
 
-import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, mkdir, chmod } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -120,6 +120,7 @@ export async function saveProfile(profile: FinancialProfile): Promise<void> {
   }
   profile.updatedAt = new Date().toISOString();
   await writeFile(profilePath, JSON.stringify(profile, null, 2), 'utf-8');
+  await chmod(profilePath, 0o600).catch(() => {/* non-fatal on platforms that don't support it */});
 }
 
 export async function createDefaultProfile(

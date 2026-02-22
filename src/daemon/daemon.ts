@@ -10,20 +10,22 @@
  */
 
 import { Cron } from 'croner';
-import { stat, readdir } from 'node:fs/promises';
+import { stat, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SchedulerEngine } from './scheduler.js';
-import { loadProfile, type FinancialProfile } from './profile.js';
+import { loadProfile, getDexterDir, type FinancialProfile } from './profile.js';
 import { updatePipelineStatus, loadAllPipelines, type Pipeline } from './pipelines.js';
 import {
   buildManagementAgentPrompt,
   buildProcessingAgentPrompt,
   buildReactiveAgentPrompt,
+  buildBriefingAgentPrompt,
   type WakeReason,
 } from './prompts.js';
 import { getTelegramChannel } from '../gateway/channels/telegram/plugin.js';
 import { runDaemonAgent } from './agent-runner.js';
 import { WakeQueue, type WakeEvent } from './wake-queue.js';
+import { retryFailedAlerts } from '../tools/daemon/alert-tools.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Daemon
@@ -33,6 +35,7 @@ export class WealthAgentDaemon {
   private wakeQueue = new WakeQueue();
   private scheduler: SchedulerEngine;
   private managementCron?: Cron;
+  private briefingCron?: Cron;
   private telegramChannel = getTelegramChannel();
   private running = false;
   /** Cache profile at start so Telegram auth check works even before first event */
@@ -92,11 +95,25 @@ export class WealthAgentDaemon {
       console.log('[daemon] Telegram not configured (TELEGRAM_BOT_TOKEN not set).');
     }
 
+    // Retry any alerts that failed to deliver in a prior session
+    await retryFailedAlerts().catch((err) =>
+      console.error('[daemon] Failed alert retry error:', err)
+    );
+
     // Schedule daily management run (6am UTC)
     this.managementCron = new Cron('0 6 * * *', { timezone: 'UTC' }, () => {
       this.wakeQueue.push({ type: 'management_run', reason: 'Daily management cycle' });
     });
     console.log('[daemon] Management agent scheduled: daily at 6am UTC');
+
+    // Schedule morning briefing if configured in profile
+    const briefingCron = this.cachedProfile?.delivery.briefingCron;
+    if (briefingCron) {
+      this.briefingCron = new Cron(briefingCron, { timezone: 'UTC' }, () => {
+        this.wakeQueue.push({ type: 'briefing_run' });
+      });
+      console.log(`[daemon] Morning briefing scheduled: ${briefingCron}`);
+    }
 
     // Initial management run on startup (idempotent — management agent checks existing pipelines)
     console.log('[daemon] Triggering initial management run...');
@@ -109,6 +126,7 @@ export class WealthAgentDaemon {
   async stop(): Promise<void> {
     this.running = false;
     this.managementCron?.stop();
+    this.briefingCron?.stop();
     this.scheduler.stopAll();
     await this.telegramChannel?.stop();
     console.log('[daemon] Daemon stopped.');
@@ -180,6 +198,10 @@ export class WealthAgentDaemon {
         await this.runManagementAgent(profile);
         break;
 
+      case 'briefing_run':
+        await this.runBriefingAgent(profile);
+        break;
+
       case 'message':
         // Should be handled in runEventLoop, not here
         break;
@@ -202,6 +224,18 @@ export class WealthAgentDaemon {
   // Agent runners
   // ─────────────────────────────────────────────────────────────────────────
 
+  private async writeLastManagementRun(): Promise<void> {
+    try {
+      const dir = getDexterDir();
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        join(dir, 'daemon-state.json'),
+        JSON.stringify({ lastManagementRunAt: new Date().toISOString() }, null, 2),
+        'utf-8'
+      );
+    } catch {/* non-fatal */}
+  }
+
   private async runManagementAgent(profile: FinancialProfile | null): Promise<void> {
     if (!profile) {
       console.log('[daemon] Skipping management agent — no profile configured.');
@@ -212,7 +246,23 @@ export class WealthAgentDaemon {
     const query = `Run the daily management cycle for ${profile.name}'s portfolio. Discover upcoming events, check existing pipelines, create new pipelines where needed, and ensure thesis notes exist for all holdings.`;
 
     await runDaemonAgent({ query, systemPrompt, agentType: 'management', scheduler: this.scheduler });
+    await this.writeLastManagementRun();
     console.log('[daemon] Management agent complete.');
+  }
+
+  private async runBriefingAgent(profile: FinancialProfile | null): Promise<void> {
+    if (!profile) {
+      console.log('[daemon] Skipping briefing agent — no profile configured.');
+      return;
+    }
+    console.log('[daemon] Running morning briefing agent...');
+    const systemPrompt = buildBriefingAgentPrompt(profile);
+    const query = `Deliver the morning briefing to ${profile.name}.`;
+    await runDaemonAgent({ query, systemPrompt, agentType: 'reactive', replyTo: {
+      channel: profile.delivery.channel,
+      chatId: profile.delivery.chatId,
+    }});
+    console.log('[daemon] Morning briefing delivered.');
   }
 
   private async runProcessingAgent(
