@@ -8,7 +8,7 @@
 
 - **Branch:** `claude/create-progress-file-I7nxY`
 - **Remote:** up to date — tree is clean
-- **Latest commit:** `18fcf0d` — Sprint 3 completion (all 7 tasks)
+- **Latest commit:** `acc6276` — Sprint 4 completion (S4-3, S4-4, S4-5)
 
 ---
 
@@ -84,15 +84,20 @@
 | **S3-6** | Test coverage | `src/daemon/sprint3.test.ts` — 18 tests: logger write/rotate, memory upsert, market context, pipelines edge cases, profile mutations, briefing_run routing. Total: **85 tests, 0 failures**. |
 | **S3-7** | User documentation | `docs/DAEMON.md` — full guide (setup, status, pipeline lifecycle, thresholds, debug, FAQ, cost). `README.md` — Daemon Mode section. |
 
-**Sprint 4 — final tasks** (see `EXECUTION_PLAN.md` §Sprint 4 for full detail):
+**Sprint 4: ✅ COMPLETE (code-implementable tasks)**
 
-| ID | Task | Area |
+### Sprint 4 — What was built (committed in `acc6276`)
+
+| ID | Task | What was done |
 |---|---|---|
-| S4-1 | Live integration test on real portfolio (72h VPS run) | manual |
-| S4-2 | Dogfood period — 3-5 internal users, 7 days | manual |
-| S4-3 | Security review (sandbox env, chatId validation, permissions, .gitignore) | manual |
-| S4-4 | LLM cost profiling — measure real token usage per run type | manual |
-| S4-5 | Release prep — CalVer bump, CHANGELOG.md, GitHub Release | `package.json`, docs |
+| **S4-3** | Security review | Fixed chatId guard (`&&` → `\|\|`): now rejects ALL senders when no profile configured. Documented explicit LLM key exclusion in `buildSafeEnv()`. Upgraded `.gitignore` pattern. Fixed DEPLOYMENT.md security note. |
+| **S4-4** | Token cost logging | `agent-runner.ts` logs input/output token counts to `daemonLog` and console at agent completion and max-iterations. Queryable via `cat ~/.dexter/daemon.log \| jq 'select(.component \| startswith("agent:"))'`. |
+| **S4-5** | Release prep | `package.json` bumped to `2026.2.22`. `CHANGELOG.md` written (full v1.0 entry). `docs/DEPLOYMENT.md` updated (security note fix). Local git tag `v2026.2.22` created. |
+
+**Remaining S4 tasks (require live infra — not code):**
+- S4-1: 72h live VPS test — requires real portfolio and cron to fire
+- S4-2: Dogfood — requires internal users
+- S4-4 (full): Actual cost measurement — requires real LLM runs with billing
 
 ---
 
