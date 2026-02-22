@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { formatToolResult } from '../types.js';
 import { loadProfile } from '../../daemon/profile.js';
 import { getTelegramChannel, formatForTelegram } from '../../gateway/channels/telegram/plugin.js';
+import { sendMessageWhatsApp } from '../../gateway/channels/whatsapp/outbound.js';
 
 async function deliverMessage(
   chatId: string,
@@ -20,9 +21,10 @@ async function deliverMessage(
     const formatted = formatForTelegram(`[Dexter] ${text}`);
     await bot.sendWithRetry({ chatId, text: formatted, parseMode: 'HTML' });
   } else {
-    // WhatsApp delivery — use existing WhatsApp gateway if available
-    // For now log it; full integration requires gateway session
-    console.log(`[alert:whatsapp → ${chatId}] ${text}`);
+    // WhatsApp delivery via baileys gateway session
+    // chatId is the E.164 phone number stored in the profile (e.g. "+14155551234")
+    await sendMessageWhatsApp({ to: chatId, body: text });
+    console.log(`[alert:whatsapp → ${chatId}] message sent`);
   }
 }
 

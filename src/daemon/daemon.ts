@@ -14,7 +14,7 @@ import { stat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SchedulerEngine } from './scheduler.js';
 import { loadProfile, type FinancialProfile } from './profile.js';
-import { updatePipelineStatus, type Pipeline } from './pipelines.js';
+import { updatePipelineStatus, loadAllPipelines, type Pipeline } from './pipelines.js';
 import {
   buildManagementAgentPrompt,
   buildProcessingAgentPrompt,
@@ -23,39 +23,7 @@ import {
 } from './prompts.js';
 import { getTelegramChannel } from '../gateway/channels/telegram/plugin.js';
 import { runDaemonAgent } from './agent-runner.js';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Wake Event Queue — fixed race condition with loop-based drain
-// ─────────────────────────────────────────────────────────────────────────────
-
-type WakeEvent = WakeReason & { queuedAt: Date };
-
-class WakeQueue {
-  private queue: WakeEvent[] = [];
-  private resolvers: Array<() => void> = [];
-
-  push(event: WakeReason): void {
-    this.queue.push({ ...event, queuedAt: new Date() });
-    // Notify the first waiter if any
-    const resolve = this.resolvers.shift();
-    if (resolve) resolve();
-  }
-
-  async next(): Promise<WakeEvent> {
-    // Drain loop: re-check the queue after the promise resolves to handle
-    // rapid-fire pushes that arrive between promise creation and resolution.
-    while (this.queue.length === 0) {
-      await new Promise<void>((resolve) => {
-        this.resolvers.push(resolve);
-      });
-    }
-    return this.queue.shift()!;
-  }
-
-  get length(): number {
-    return this.queue.length;
-  }
-}
+import { WakeQueue, type WakeEvent } from './wake-queue.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Daemon
@@ -95,6 +63,10 @@ export class WealthAgentDaemon {
 
     // Restore pipeline schedules from disk
     await this.scheduler.restoreSchedules();
+
+    // Reset any pipelines that were left in `running` state from a prior crash.
+    // A pipeline stuck in `running` for > 10 minutes indicates an unclean shutdown.
+    await this.resetStuckPipelines();
 
     // Start Telegram if configured
     if (this.telegramChannel) {
@@ -140,6 +112,29 @@ export class WealthAgentDaemon {
     this.scheduler.stopAll();
     await this.telegramChannel?.stop();
     console.log('[daemon] Daemon stopped.');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Startup health checks
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Any pipeline left in `running` status is a crash artifact — the prior
+   * process died while the collection script was executing.  Reset these to
+   * `scheduled` so the next management run can decide whether to rerun them.
+   * A 10-minute grace window avoids racing with a daemon that just started.
+   */
+  private async resetStuckPipelines(): Promise<void> {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const all = await loadAllPipelines();
+    const stuck = all.filter(
+      (p) =>
+        p.status === 'running' &&
+        (p.collection.lastRunAt === undefined || p.collection.lastRunAt < tenMinutesAgo)
+    );
+    if (stuck.length === 0) return;
+    console.warn(`[daemon] Resetting ${stuck.length} stuck pipeline(s) to 'scheduled':`, stuck.map((p) => p.id));
+    await Promise.all(stuck.map((p) => updatePipelineStatus(p.id, 'scheduled')));
   }
 
   // ─────────────────────────────────────────────────────────────────────────

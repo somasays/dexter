@@ -5,7 +5,7 @@
  * The agent reads this at every wake to personalise every interaction.
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -81,7 +81,8 @@ export type ProfileUpdate = Partial<Omit<FinancialProfile, 'createdAt'>>;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getDexterDir(): string {
-  return join(homedir(), '.dexter');
+  // DEXTER_DIR env var allows overriding the data directory (used in tests and custom setups)
+  return process.env.DEXTER_DIR ?? join(homedir(), '.dexter');
 }
 
 export function getProfilePath(): string {
@@ -112,8 +113,13 @@ export async function loadProfile(): Promise<FinancialProfile | null> {
 export async function saveProfile(profile: FinancialProfile): Promise<void> {
   const dir = getDexterDir();
   await mkdir(dir, { recursive: true });
+  // Back up the existing profile before overwriting so corrupt saves are recoverable
+  const profilePath = getProfilePath();
+  if (existsSync(profilePath)) {
+    await copyFile(profilePath, `${profilePath}.bak`).catch(() => {/* non-fatal */});
+  }
   profile.updatedAt = new Date().toISOString();
-  await writeFile(getProfilePath(), JSON.stringify(profile, null, 2), 'utf-8');
+  await writeFile(profilePath, JSON.stringify(profile, null, 2), 'utf-8');
 }
 
 export async function createDefaultProfile(
