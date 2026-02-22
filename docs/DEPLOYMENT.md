@@ -333,5 +333,5 @@ Alternatively, the daemon automatically resets any pipeline stuck in `running` f
 - **No inbound ports:** The daemon never listens on a network port. All communication is outbound (Telegram long-polling, HTTPS to APIs).
 - **Credential storage:** API keys are in `.env`. Never commit `.env` to git. Set file permissions: `chmod 600 .env`
 - **Telegram auth:** Only messages from the configured `chatId` are processed. All others are silently dropped.
-- **Script sandbox:** Collection scripts run in a child process with a minimal environment (no `HOME` variable, only the specific API keys they need via `DEXTER_OUTPUT_PATH`). They cannot access the full environment.
+- **Script sandbox:** Collection scripts run in a child process with an explicit environment allowlist (`HOME`, `PATH`, read-only data API keys, `DEXTER_*` path variables). LLM API keys, bot tokens, and other credentials are never injected into the subprocess.
 - **File access:** The `read_collected_data` tool is restricted to `~/.dexter/collected/` — no arbitrary filesystem reads.

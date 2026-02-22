@@ -23,16 +23,27 @@ import { getScriptsDir, getCollectedDataDir } from '../../daemon/pipelines.js';
 const MAX_OUTPUT_BYTES = 50_000; // 50KB max stdout
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** Environment variables safe to pass into scripts (read-only, non-secret data APIs) */
+/**
+ * Environment variable allowlist for sandboxed scripts.
+ *
+ * EXPLICITLY EXCLUDED (never passed to scripts):
+ *   OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY — LLM credentials
+ *   TELEGRAM_BOT_TOKEN — messaging credentials
+ *   LANGCHAIN_API_KEY, LANGSMITH_API_KEY — observability credentials
+ *   Any other secret not in this list
+ *
+ * Included: read-only data API keys and Dexter path configuration only.
+ */
 const SAFE_ENV_KEYS = [
   'HOME',
   'PATH',
-  'FINANCIAL_DATASETS_API_KEY', // read-only financial data
-  'EXASEARCH_API_KEY',
-  'TAVILY_API_KEY',
+  'FINANCIAL_DATASETS_API_KEY', // read-only financial data API
+  'EXASEARCH_API_KEY',           // read-only web search
+  'TAVILY_API_KEY',              // read-only web search fallback
   'DEXTER_SCRIPTS_DIR',
   'DEXTER_COLLECTED_DIR',
   'DEXTER_OUTPUT_DIR',
+  'DEXTER_OUTPUT_PATH',          // canonical per-run output path set by pipeline runner
 ];
 
 function buildSafeEnv(): Record<string, string> {

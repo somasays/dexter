@@ -13,6 +13,7 @@ import { createRunContext } from '../agent/run-context.js';
 import { buildFinalAnswerContext } from '../agent/final-answer-context.js';
 import { AgentToolExecutor } from '../agent/tool-executor.js';
 import { getDaemonTools } from './tools.js';
+import { daemonLog } from '../utils/daemon-logger.js';
 import type { SchedulerEngine } from './scheduler.js';
 
 // Daemon always auto-approves file tools (headless, no interactive prompt)
@@ -87,7 +88,13 @@ export async function runDaemonAgent(config: DaemonAgentConfig): Promise<string>
         ? finalResponse
         : extractTextContent(finalResponse);
 
-      console.log(`[agent:${agentType}] Complete after ${ctx.iteration} iterations`);
+      const usage = ctx.tokenCounter.getUsage();
+      console.log(`[agent:${agentType}] Complete after ${ctx.iteration} iterations (${usage?.inputTokens ?? 0} in / ${usage?.outputTokens ?? 0} out tokens)`);
+      daemonLog.info(`agent:${agentType}`, 'Agent run complete', {
+        iterations: ctx.iteration,
+        inputTokens: usage?.inputTokens ?? 0,
+        outputTokens: usage?.outputTokens ?? 0,
+      });
       return answer ?? '';
     }
 
@@ -129,6 +136,12 @@ export async function runDaemonAgent(config: DaemonAgentConfig): Promise<string>
   const answer = typeof finalResponse === 'string'
     ? finalResponse
     : extractTextContent(finalResponse);
-  console.log(`[agent:${agentType}] Max iterations reached (${maxIterations})`);
+  const usage = ctx.tokenCounter.getUsage();
+  console.log(`[agent:${agentType}] Max iterations reached (${maxIterations}). Tokens: ${usage?.inputTokens ?? 0} in / ${usage?.outputTokens ?? 0} out`);
+  daemonLog.warn(`agent:${agentType}`, 'Agent hit max iterations', {
+    maxIterations,
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+  });
   return answer ?? '';
 }
