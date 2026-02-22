@@ -8,7 +8,7 @@
 
 - **Branch:** `claude/create-progress-file-I7nxY`
 - **Remote:** up to date — tree is clean
-- **Latest commit:** `ef7fc86` — Merge PR #1 (Sprint 1 completion)
+- **Latest commit:** `47add09` — Sprint 2 completion (all 7 tasks)
 
 ---
 
@@ -56,18 +56,31 @@
 ## Current Sprint Status
 
 **Sprint 1: ✅ COMPLETE**
+**Sprint 2: ✅ COMPLETE**
 
-**Sprint 2 — next tasks** (see `docs/EXECUTION_PLAN.md` §Sprint 2 for full detail):
+### Sprint 2 — What was built (committed in `47add09`)
+
+| ID | Task | What was done |
+|---|---|---|
+| **S2-1** | Structured alert format | `send_alert` now requires 7 fields: `ticker`, `headline`, `specifics`, `thesisImpact`, `recommendation`, `nextCatalyst`, `urgency`. `formatAlertMessage()` renders clean HTML for Telegram. |
+| **S2-2** | Management agent edge cases | Prompt updated: cancel pipelines for past events or removed tickers, enforce 90-day forward window, retry failed pipelines (rewrite script → test → reschedule). |
+| **S2-3** | Morning briefing | `briefing_run` event type added. `buildBriefingAgentPrompt()` in `prompts.ts`. `briefingCron` wired in `daemon.ts` from profile delivery config. |
+| **S2-4** | Richer `daemon:status` | Next run time per pipeline (croner), thesis coverage (holdings vs. thesis files), Telegram configured status, last management run timestamp from `daemon-state.json`. |
+| **S2-5** | File permissions | `saveProfile()` calls `chmod(0o600)` after every write. |
+| **S2-6** | Alert retry persistence | Failed alerts written to `~/.dexter/alerts-failed.jsonl`. `retryFailedAlerts()` called at daemon startup, removes successfully re-delivered entries. |
+| **S2-7** | Test coverage | `src/daemon/sprint2.test.ts` — 30 new tests. Total: 67 tests, 0 failures (was 37). |
+
+**Sprint 3 — next tasks** (see `EXECUTION_PLAN.md` §Sprint 3 for full detail):
 
 | ID | Task | Area |
 |---|---|---|
-| S2-1 | Alert format quality — structured Telegram message template | `src/tools/daemon/alert-tools.ts` |
-| S2-2 | Management agent edge cases — duplicate pipeline detection | `src/tools/daemon/management-tools.ts` |
-| S2-3 | Morning briefing — wire `briefingCron` field (schema exists, not scheduled) | `src/daemon/daemon.ts` |
-| S2-4 | `/status` command — richer pipeline + profile summary | `src/daemon/index.ts` |
-| S2-5 | File permissions — `chmod 600` on `profile.json` and `.env` at startup | `src/daemon/daemon.ts` |
-| S2-6 | Alert retry persistence — retry failed sends, persist retry state | `src/tools/daemon/alert-tools.ts` |
-| S2-7 | Test coverage — `bun test --coverage`, target >60% on `src/daemon/` | new test files |
+| S3-1 | Collection script template library — ex-dividend, 10-Q, 8-K, price-alert | `src/daemon/script-templates/` |
+| S3-2 | Market context weekly update | `src/daemon/prompts.ts` |
+| S3-3 | Portfolio drift detection | `src/daemon/prompts.ts`, new tool |
+| S3-4 | Structured daemon logging to `~/.dexter/daemon.log` (NDJSON, 10MB rotation) | `src/utils/daemon-logger.ts` |
+| S3-5 | Startup preflight check — clear summary of configured components | `src/daemon/daemon.ts` |
+| S3-6 | Test suite expansion — target >80% on `src/daemon/` | new test files |
+| S3-7 | User documentation — `docs/DAEMON.md`, update `README.md` | docs |
 
 ---
 
@@ -81,6 +94,7 @@ bun test src/daemon/       # daemon tests only
 
 **Test files:**
 - `src/daemon/daemon.test.ts` — WakeQueue, resetStuckPipelines, profile backup, pipeline lifecycle (16 tests)
+- `src/daemon/sprint2.test.ts` — profile mutations, memory, pipelines, scheduler, alert retry (30 tests)
 - `src/gateway/access-control.test.ts` — gateway auth logic
 - `src/utils/cache.test.ts` — cache key generation and round-trip
 
@@ -168,9 +182,20 @@ bun test                       # run test suite
 
 ---
 
+## Key Source Files (updated for Sprint 2)
+
+| File | New in Sprint 2 |
+|---|---|
+| `src/daemon/sprint2.test.ts` | 30 tests: profile, memory, pipelines, scheduler, alert retry |
+| `src/tools/daemon/alert-tools.ts` | Structured `send_alert` schema; `retryFailedAlerts()` export |
+| `src/daemon/prompts.ts` | `buildBriefingAgentPrompt()`; updated management + processing prompts |
+| `src/daemon/daemon.ts` | `briefingCron` wired; `retryFailedAlerts()` on startup; `daemon-state.json` written after management runs |
+| `src/daemon/index.ts` | `daemon:status` shows next run, thesis coverage, last management run, Telegram status |
+| `src/daemon/profile.ts` | `chmod(0o600)` after every `saveProfile()` write |
+
 ## What NOT to Do Next Session
 
-- Don't re-fix the 9 critical bugs — they are already committed and tested
-- Don't rewrite `WakeQueue` — it's correct and tested; it lives in `wake-queue.ts` now
-- Don't start Sprint 3/4 before finishing Sprint 2 — the execution plan has a clear dependency order
+- Don't re-fix Sprint 1/2 items — they are committed and tested
+- Don't rewrite `WakeQueue` or `SchedulerEngine` — both are correct and tested
+- Don't start Sprint 4 before finishing Sprint 3 — see dependency order in `EXECUTION_PLAN.md`
 - Don't create a `.env` with fabricated keys — wait for the user to provide real ones
