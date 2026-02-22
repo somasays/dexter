@@ -8,7 +8,7 @@
 
 - **Branch:** `claude/create-progress-file-I7nxY`
 - **Remote:** up to date — tree is clean
-- **Latest commit:** `47add09` — Sprint 2 completion (all 7 tasks)
+- **Latest commit:** `18fcf0d` — Sprint 3 completion (all 7 tasks)
 
 ---
 
@@ -70,31 +70,44 @@
 | **S2-6** | Alert retry persistence | Failed alerts written to `~/.dexter/alerts-failed.jsonl`. `retryFailedAlerts()` called at daemon startup, removes successfully re-delivered entries. |
 | **S2-7** | Test coverage | `src/daemon/sprint2.test.ts` — 30 new tests. Total: 67 tests, 0 failures (was 37). |
 
-**Sprint 3 — next tasks** (see `EXECUTION_PLAN.md` §Sprint 3 for full detail):
+**Sprint 3: ✅ COMPLETE**
+
+### Sprint 3 — What was built (committed in `18fcf0d`)
+
+| ID | Task | What was done |
+|---|---|---|
+| **S3-1** | Script templates | `ex-dividend-collect.ts`, `filing-10q-collect.ts`, `filing-8k-collect.ts`, `price-alert-collect.ts` — each with retry logic and structured JSON output. |
+| **S3-2** | Market context update | Management agent Step 0: check `read_market_context`; refresh via web search if absent or >7 days old / Monday. |
+| **S3-3** | Portfolio drift detection | Management agent Step 1b: fetch current prices, compute position %, flag positions over `maxPositionPct`. `sendAlertTool` added to management toolset. |
+| **S3-4** | Structured daemon logging | `src/utils/daemon-logger.ts`: NDJSON to `~/.dexter/daemon.log`, fire-and-forget, 10MB rotation to `daemon.log.1`. Wired into daemon/agent-runner key events. |
+| **S3-5** | Startup preflight check | Prints formatted preflight summary before event loop. Exits 1 (hard fail) if no LLM key. Warns for missing Telegram/financial data. |
+| **S3-6** | Test coverage | `src/daemon/sprint3.test.ts` — 18 tests: logger write/rotate, memory upsert, market context, pipelines edge cases, profile mutations, briefing_run routing. Total: **85 tests, 0 failures**. |
+| **S3-7** | User documentation | `docs/DAEMON.md` — full guide (setup, status, pipeline lifecycle, thresholds, debug, FAQ, cost). `README.md` — Daemon Mode section. |
+
+**Sprint 4 — final tasks** (see `EXECUTION_PLAN.md` §Sprint 4 for full detail):
 
 | ID | Task | Area |
 |---|---|---|
-| S3-1 | Collection script template library — ex-dividend, 10-Q, 8-K, price-alert | `src/daemon/script-templates/` |
-| S3-2 | Market context weekly update | `src/daemon/prompts.ts` |
-| S3-3 | Portfolio drift detection | `src/daemon/prompts.ts`, new tool |
-| S3-4 | Structured daemon logging to `~/.dexter/daemon.log` (NDJSON, 10MB rotation) | `src/utils/daemon-logger.ts` |
-| S3-5 | Startup preflight check — clear summary of configured components | `src/daemon/daemon.ts` |
-| S3-6 | Test suite expansion — target >80% on `src/daemon/` | new test files |
-| S3-7 | User documentation — `docs/DAEMON.md`, update `README.md` | docs |
+| S4-1 | Live integration test on real portfolio (72h VPS run) | manual |
+| S4-2 | Dogfood period — 3-5 internal users, 7 days | manual |
+| S4-3 | Security review (sandbox env, chatId validation, permissions, .gitignore) | manual |
+| S4-4 | LLM cost profiling — measure real token usage per run type | manual |
+| S4-5 | Release prep — CalVer bump, CHANGELOG.md, GitHub Release | `package.json`, docs |
 
 ---
 
 ## Test Suite
 
 ```bash
-bun test                   # run all tests (39 tests, 7 files)
+bun test                   # run all tests (85 tests, 9 files)
 bun test --watch           # watch mode
-bun test src/daemon/       # daemon tests only
+bun test src/daemon/       # daemon tests only (62 tests, 3 files)
 ```
 
 **Test files:**
 - `src/daemon/daemon.test.ts` — WakeQueue, resetStuckPipelines, profile backup, pipeline lifecycle (16 tests)
 - `src/daemon/sprint2.test.ts` — profile mutations, memory, pipelines, scheduler, alert retry (30 tests)
+- `src/daemon/sprint3.test.ts` — logger, memory extended, pipelines edge cases, profile extended, briefing_run (18 tests)
 - `src/gateway/access-control.test.ts` — gateway auth logic
 - `src/utils/cache.test.ts` — cache key generation and round-trip
 
@@ -182,16 +195,22 @@ bun test                       # run test suite
 
 ---
 
-## Key Source Files (updated for Sprint 2)
+## Key Source Files (updated for Sprint 3)
 
-| File | New in Sprint 2 |
+| File | Added/Changed |
 |---|---|
 | `src/daemon/sprint2.test.ts` | 30 tests: profile, memory, pipelines, scheduler, alert retry |
+| `src/daemon/sprint3.test.ts` | 18 tests: logger, memory extended, pipelines edge cases, briefing_run |
 | `src/tools/daemon/alert-tools.ts` | Structured `send_alert` schema; `retryFailedAlerts()` export |
-| `src/daemon/prompts.ts` | `buildBriefingAgentPrompt()`; updated management + processing prompts |
-| `src/daemon/daemon.ts` | `briefingCron` wired; `retryFailedAlerts()` on startup; `daemon-state.json` written after management runs |
-| `src/daemon/index.ts` | `daemon:status` shows next run, thesis coverage, last management run, Telegram status |
+| `src/daemon/prompts.ts` | Market context Step 0, drift Step 1b, briefing prompt, updated send_alert schema in processing prompt |
+| `src/daemon/daemon.ts` | Preflight check, briefingCron, retryFailedAlerts on startup, daemonLog wired, daemon-state.json |
+| `src/daemon/tools.ts` | `sendAlertTool` added to management agent toolset |
+| `src/daemon/index.ts` | `daemon:status` with next run, thesis coverage, last management run, Telegram status |
 | `src/daemon/profile.ts` | `chmod(0o600)` after every `saveProfile()` write |
+| `src/utils/daemon-logger.ts` | NDJSON file logger, 10MB rotation |
+| `src/daemon/script-templates/` | 4 new templates: ex-dividend, 10-Q, 8-K, price-alert |
+| `docs/DAEMON.md` | Full user guide |
+| `README.md` | Daemon Mode section |
 
 ## What NOT to Do Next Session
 
