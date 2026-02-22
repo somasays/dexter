@@ -26,6 +26,7 @@ import { getTelegramChannel } from '../gateway/channels/telegram/plugin.js';
 import { runDaemonAgent } from './agent-runner.js';
 import { WakeQueue, type WakeEvent } from './wake-queue.js';
 import { retryFailedAlerts } from '../tools/daemon/alert-tools.js';
+import { daemonLog } from '../utils/daemon-logger.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Daemon
@@ -47,6 +48,7 @@ export class WealthAgentDaemon {
 
   async start(): Promise<void> {
     this.running = true;
+    daemonLog.info('daemon', 'Dexter daemon starting');
     console.log('[daemon] Starting Dexter autonomous wealth agent...');
 
     this.cachedProfile = await loadProfile();
@@ -115,10 +117,14 @@ export class WealthAgentDaemon {
       console.log(`[daemon] Morning briefing scheduled: ${briefingCron}`);
     }
 
+    // Preflight check — print clear summary before entering event loop
+    await this.runPreflightCheck();
+
     // Initial management run on startup (idempotent — management agent checks existing pipelines)
     console.log('[daemon] Triggering initial management run...');
     this.wakeQueue.push({ type: 'management_run', reason: 'Startup management cycle' });
 
+    daemonLog.info('daemon', 'Daemon event loop starting');
     // Main event loop
     await this.runEventLoop();
   }
@@ -129,6 +135,7 @@ export class WealthAgentDaemon {
     this.briefingCron?.stop();
     this.scheduler.stopAll();
     await this.telegramChannel?.stop();
+    daemonLog.info('daemon', 'Daemon stopped');
     console.log('[daemon] Daemon stopped.');
   }
 
@@ -156,6 +163,53 @@ export class WealthAgentDaemon {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Preflight
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private async runPreflightCheck(): Promise<void> {
+    const profile = this.cachedProfile;
+    const model = process.env.DEXTER_DAEMON_MODEL ?? 'gpt-4o';
+    const hasTelegram = !!process.env.TELEGRAM_BOT_TOKEN;
+    const hasFinancial = !!process.env.FINANCIAL_DATASETS_API_KEY;
+    const hasExa = !!process.env.EXASEARCH_API_KEY;
+    const hasTavily = !!process.env.TAVILY_API_KEY;
+    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    const hasLlm = hasOpenAI || hasAnthropic;
+
+    const activePipelines = await loadAllPipelines().then(
+      (ps) => ps.filter((p) => p.status === 'scheduled' || p.status === 'running').length
+    ).catch(() => 0);
+
+    const webSearch = hasExa ? 'Exa' : hasTavily ? 'Tavily' : 'NOT CONFIGURED';
+    const llmProvider = hasOpenAI ? `OpenAI (${model})` : hasAnthropic ? `Anthropic (${model})` : 'NOT CONFIGURED';
+
+    console.log('\n[daemon] Preflight check:');
+    console.log(`  Profile:          ${profile ? `FOUND (${profile.name}, ${profile.holdings.length} holdings)` : 'NOT FOUND — run daemon:setup'}`);
+    console.log(`  Telegram:         ${hasTelegram ? 'CONFIGURED' : 'NOT CONFIGURED (set TELEGRAM_BOT_TOKEN)'}`);
+    console.log(`  LLM provider:     ${llmProvider}`);
+    console.log(`  Financial data:   ${hasFinancial ? 'CONFIGURED (FINANCIAL_DATASETS_API_KEY set)' : 'NOT CONFIGURED (set FINANCIAL_DATASETS_API_KEY)'}`);
+    console.log(`  Web search:       ${webSearch}`);
+    console.log(`  Active pipelines: ${activePipelines} scheduled`);
+
+    if (!hasLlm) {
+      const msg = 'No LLM API key configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env';
+      console.error(`\n[daemon] FATAL: ${msg}`);
+      daemonLog.error('daemon', msg);
+      process.exit(1);
+    }
+
+    if (!hasTelegram) {
+      console.warn('[daemon] WARNING: Telegram not configured — alerts cannot be delivered');
+    }
+    if (!hasFinancial) {
+      console.warn('[daemon] WARNING: Financial data API not configured — collection scripts may fail');
+    }
+
+    console.log('[daemon] Preflight complete. Starting event loop.\n');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Event loop
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -177,6 +231,7 @@ export class WealthAgentDaemon {
         }
       } catch (err) {
         console.error('[daemon] Error in event loop:', err);
+        daemonLog.error('daemon', 'Event loop error', { error: String(err) });
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
@@ -245,8 +300,10 @@ export class WealthAgentDaemon {
     const systemPrompt = buildManagementAgentPrompt(profile);
     const query = `Run the daily management cycle for ${profile.name}'s portfolio. Discover upcoming events, check existing pipelines, create new pipelines where needed, and ensure thesis notes exist for all holdings.`;
 
+    daemonLog.info('management', 'Management run starting', { profile: profile.name });
     await runDaemonAgent({ query, systemPrompt, agentType: 'management', scheduler: this.scheduler });
     await this.writeLastManagementRun();
+    daemonLog.info('management', 'Management run complete');
     console.log('[daemon] Management agent complete.');
   }
 
@@ -276,6 +333,7 @@ export class WealthAgentDaemon {
       return;
     }
     console.log(`[daemon] Running processing agent for pipeline: ${pipelineId}`);
+    daemonLog.info('processing', 'Processing agent starting', { pipelineId, ticker });
     const systemPrompt = buildProcessingAgentPrompt(profile, pipelineId, ticker, dataPath);
     const query = `Process the collected data for ${ticker} pipeline ${pipelineId}. The data is at: ${dataPath}. Analyze and decide: ALERT or NO_ACTION.`;
 
@@ -285,6 +343,7 @@ export class WealthAgentDaemon {
       completedAt: new Date().toISOString(),
       collectedDataPath: dataPath,
     });
+    daemonLog.info('processing', 'Processing agent complete', { pipelineId, ticker });
     console.log(`[daemon] Processing agent complete for ${pipelineId}.`);
   }
 
@@ -321,6 +380,7 @@ export class WealthAgentDaemon {
 
   private async onPipelineFired(pipeline: Pipeline): Promise<void> {
     console.log(`[daemon] Pipeline fired: ${pipeline.id} (${pipeline.description})`);
+    daemonLog.info('pipeline', 'Pipeline fired', { pipelineId: pipeline.id, ticker: pipeline.ticker, description: pipeline.description });
 
     // Use the canonical output path stored in the pipeline definition
     const dataPath = pipeline.collection.outputDataPath;
@@ -362,6 +422,7 @@ export class WealthAgentDaemon {
     if (timedOut || exitCode !== 0) {
       const reason = timedOut ? 'timeout (120s)' : `exit code ${exitCode}`;
       console.error(`[daemon] Pipeline script failed (${reason}): ${pipeline.id}`);
+      daemonLog.error('pipeline', 'Pipeline collection failed', { pipelineId: pipeline.id, ticker: pipeline.ticker, reason });
       await updatePipelineStatus(pipeline.id, 'failed');
       // Notify user that collection failed — they deserve to know
       const profile = await this.safeLoadProfile();
@@ -390,6 +451,7 @@ export class WealthAgentDaemon {
     }
 
     console.log(`[daemon] Data collected at ${dataPath}. Queuing processing.`);
+    daemonLog.info('pipeline', 'Pipeline collection complete — queuing processing', { pipelineId: pipeline.id, ticker: pipeline.ticker, dataPath });
     this.wakeQueue.push({
       type: 'pipeline_complete',
       pipelineId: pipeline.id,

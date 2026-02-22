@@ -12,6 +12,7 @@ Dexter is an autonomous financial research agent that thinks, plans, and learns 
 - [🚀 How to Run](#-how-to-run)
 - [📊 How to Evaluate](#-how-to-evaluate)
 - [🐛 How to Debug](#-how-to-debug)
+- [🤖 Daemon Mode](#-daemon-mode-always-on-portfolio-monitoring)
 - [📱 How to Use with WhatsApp](#-how-to-use-with-whatsapp)
 - [🤝 How to Contribute](#-how-to-contribute)
 - [📄 License](#-license)
@@ -146,6 +147,28 @@ Each file contains newline-delimited JSON entries tracking:
 ```
 
 This makes it easy to inspect exactly what data the agent gathered and how it interpreted results.
+
+## 🤖 Daemon Mode (Always-On Portfolio Monitoring)
+
+Daemon Mode runs Dexter as an autonomous background agent. It monitors your portfolio around the clock, collects event data on schedule (earnings, dividends, filings, price levels), analyzes results, and sends you a Telegram or WhatsApp alert only when action is warranted.
+
+**Quick start:**
+```bash
+bun run daemon:setup    # interactive profile wizard (~5 minutes)
+bun run daemon          # start the daemon
+bun run daemon:status   # check pipelines, thesis coverage, next run times
+```
+
+Send messages to your Telegram bot to interact with your portfolio:
+> How is my NVDA position doing?
+
+> I bought 20 shares of GOOGL at $175
+
+> What earnings do I have coming up this week?
+
+For full documentation, configuration, and troubleshooting, see **[docs/DAEMON.md](docs/DAEMON.md)**.
+
+---
 
 ## 📱 How to Use with WhatsApp
 

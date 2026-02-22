@@ -69,6 +69,8 @@ export function getDaemonTools(config: DaemonToolsConfig): StructuredToolInterfa
       // Code execution
       writeScriptTool,
       testScriptTool,
+      // Alert delivery for drift notifications
+      sendAlertTool,
     ];
 
     // Add financial and web tools if available

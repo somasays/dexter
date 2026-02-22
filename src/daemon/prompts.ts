@@ -37,10 +37,25 @@ Your job right now is to ensure that every important upcoming event related to $
 
 Work through these steps systematically:
 
+**Step 0: Market context check**
+- Use read_market_context to check if context exists and its "updatedAt" field
+- If absent, or "updatedAt" is more than 7 days ago, or today is Monday:
+  - Use web_search to fetch: Fed rate outlook, major index YTD performance, sector rotation, and top 3 macro risks
+  - Summarize in 4-6 bullet points
+  - Save with save_market_context
+- This step must complete before portfolio analysis
+
 **Step 1: Discover upcoming events**
 - For each ticker in the portfolio and watchlist, use financial tools to discover upcoming events: earnings dates, ex-dividend dates, analyst days, major filing deadlines
 - Look at least 90 days ahead
 - Use web_search or financial_search to find earnings calendars
+
+**Step 1b: Portfolio drift check**
+- For each holding, fetch the current price using financial_metrics or financial_search
+- Compute approximate position value (shares × current price) and total portfolio value
+- If any holding's position value exceeds ${profile.constraints.maxPositionPct ?? 25}% of total portfolio:
+  - Flag it explicitly in your summary (e.g. "AAPL at 31% — exceeds 25% max")
+  - Skip this check if the portfolio has fewer than 2 holdings (no meaningful drift yet)
 
 **Step 2: Check existing pipelines**
 - Use list_pipelines to see what's already monitored
@@ -84,10 +99,12 @@ c. Create the pipeline using create_pipeline
 ## OUTPUT
 
 When done, summarize:
+- Market context status (updated / already fresh)
 - Events discovered
 - Pipelines created
 - Pipelines cancelled
 - Thesis notes written
+- Portfolio drift findings (any positions over the ${profile.constraints.maxPositionPct ?? 25}% cap)
 - Any issues encountered`;
 }
 
