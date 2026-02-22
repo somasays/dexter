@@ -8,7 +8,7 @@
 
 - **Branch:** `claude/create-progress-file-I7nxY`
 - **Remote:** up to date — tree is clean
-- **Latest commit:** `acc6276` — Sprint 4 completion (S4-3, S4-4, S4-5)
+- **Latest commit:** `3bdf7ce` — Sprint 4 PROGRESS.md update (all sprints done)
 
 ---
 
@@ -200,26 +200,47 @@ bun test                       # run test suite
 
 ---
 
-## Key Source Files (updated for Sprint 3)
+## Key Source Files (full — updated for Sprint 4)
 
-| File | Added/Changed |
+| File | What it does |
 |---|---|
-| `src/daemon/sprint2.test.ts` | 30 tests: profile, memory, pipelines, scheduler, alert retry |
-| `src/daemon/sprint3.test.ts` | 18 tests: logger, memory extended, pipelines edge cases, briefing_run |
-| `src/tools/daemon/alert-tools.ts` | Structured `send_alert` schema; `retryFailedAlerts()` export |
-| `src/daemon/prompts.ts` | Market context Step 0, drift Step 1b, briefing prompt, updated send_alert schema in processing prompt |
-| `src/daemon/daemon.ts` | Preflight check, briefingCron, retryFailedAlerts on startup, daemonLog wired, daemon-state.json |
-| `src/daemon/tools.ts` | `sendAlertTool` added to management agent toolset |
-| `src/daemon/index.ts` | `daemon:status` with next run, thesis coverage, last management run, Telegram status |
-| `src/daemon/profile.ts` | `chmod(0o600)` after every `saveProfile()` write |
-| `src/utils/daemon-logger.ts` | NDJSON file logger, 10MB rotation |
-| `src/daemon/script-templates/` | 4 new templates: ex-dividend, 10-Q, 8-K, price-alert |
-| `docs/DAEMON.md` | Full user guide |
-| `README.md` | Daemon Mode section |
+| `src/daemon/daemon.ts` | `WealthAgentDaemon` — preflight, event loop, 3 agent runners, pipeline fire, chatId guard |
+| `src/daemon/wake-queue.ts` | `WakeQueue` — async FIFO, concurrency-safe push/next |
+| `src/daemon/scheduler.ts` | `SchedulerEngine` — croner-based cron scheduling, live registration |
+| `src/daemon/agent-runner.ts` | `runDaemonAgent()` — headless LangChain agent with daemon tools + token logging |
+| `src/daemon/pipelines.ts` | Pipeline CRUD, `getCollectedDataDir()`, `getScriptsDir()` |
+| `src/daemon/profile.ts` | Profile store — `0600` permissions, `.bak` on save, `safeLoadProfile()` |
+| `src/daemon/memory.ts` | Thesis notes, action log (500-entry cap), market context |
+| `src/daemon/prompts.ts` | Management (Step 0 market ctx, Step 1b drift), processing, briefing, reactive prompts |
+| `src/daemon/tools.ts` | Per-agent tool sets (management + `sendAlertTool`, processing, reactive) |
+| `src/daemon/index.ts` | CLI: `daemon`, `daemon:setup`, `daemon:status` |
+| `src/daemon/setup.ts` | Interactive profile wizard |
+| `src/tools/daemon/alert-tools.ts` | `send_alert` (7-field schema), `retryFailedAlerts()`, failed alert persistence |
+| `src/tools/daemon/pipeline-tools.ts` | `create_pipeline` (live scheduler registration), `list_pipelines`, `cancel_pipeline` |
+| `src/tools/daemon/memory-tools.ts` | `read_thesis`, `write_thesis`, `save_market_context`, `log_action` |
+| `src/tools/daemon/profile-tools.ts` | `read_profile`, `add_holding`, `remove_holding`, `add_goal` |
+| `src/tools/code/execute-script.ts` | `write_script`, `test_script`, `run_script` — sandboxed subprocess with env allowlist |
+| `src/utils/daemon-logger.ts` | NDJSON logger → `~/.dexter/daemon.log`, 10MB rotation |
+| `src/gateway/channels/telegram/plugin.ts` | `TelegramChannel` — grammy bot, inbound + outbound |
+| `src/daemon/script-templates/` | 5 reference templates: earnings, ex-dividend, 10-Q, 8-K, price-alert |
+| `docs/DAEMON.md` | Full user guide (setup, status, debug, FAQ, cost) |
+| `docs/DEPLOYMENT.md` | systemd unit, PM2 config, VPS sizing, security notes |
+| `CHANGELOG.md` | v1.0 release changelog |
 
 ## What NOT to Do Next Session
 
-- Don't re-fix Sprint 1/2 items — they are committed and tested
+- Don't re-fix anything from Sprints 1–4 — all code work is committed and tested
 - Don't rewrite `WakeQueue` or `SchedulerEngine` — both are correct and tested
-- Don't start Sprint 4 before finishing Sprint 3 — see dependency order in `EXECUTION_PLAN.md`
 - Don't create a `.env` with fabricated keys — wait for the user to provide real ones
+- Don't push tags — the git server rejects tag pushes with HTTP 403
+
+## All Sprints Complete
+
+All code-implementable work from `EXECUTION_PLAN.md` Sprints 1–4 is done.
+
+**Remaining items require live infrastructure** (not code):
+- S4-1: 72h live VPS test
+- S4-2: Dogfood with internal users
+- S4-4 (full measurement): actual billing data from real LLM runs
+
+The next logical step is to deploy on a VPS, run `bun run daemon:setup`, and let the system run through at least one real earnings pipeline cycle end-to-end.
